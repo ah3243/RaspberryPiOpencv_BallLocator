@@ -19,8 +19,8 @@ ImgH = 240
 fps = 32
 block = [0,0] # image segment dimensions
 
-DistHigh = 0
-DistLow = 100
+# basic number to check the range of distances
+Dist = [50,50]
 
 # set hue limits for tracked object
 blueLower = (110,50,50)
@@ -86,12 +86,15 @@ def prepSegments(frame):
 
 	print(centrePoints)
 
-def trackCameraDistanceBoundaries(distance):
-	print("This is the Distance {}\n".format(distance))
-	if distance > DistHigh:
-		DistHigh = distance
-	elif distance < DistLow:
-		DistLow = distance	
+def trackCameraDistanceBoundaries(distance, Dist):
+	# print("This is the Distance {} and this is DistHigh {}\n".format(distance, Dist[1]))
+	if distance > Dist[1]:
+		print("distance {} is higher than DistHigh {}".format(distance, Dist[1]))
+		Dist[1] = distance
+	elif distance < Dist[0]:
+		print("distance {} is higher than DistLow {}".format(distance, Dist[0]))
+		Dist[0] = distance	
+	return Dist
 
 def updateServo(position):
 	print("updating servo")
@@ -148,7 +151,7 @@ for rawFrame in camera.capture_continuous(rawCapture, format="bgr", use_video_po
 			# draw centre point to frame
 			cv2.circle(frame, center, 5, (255, 0, 255), -1)
 			calDistance(distance, center)
-			trackCameraDistanceBoundaries(distance[4])
+			Dist = trackCameraDistanceBoundaries(distance[4], Dist)
 
 	# show the frame
 	cv2.imshow("Frame", frame)
