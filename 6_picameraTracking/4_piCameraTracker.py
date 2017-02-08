@@ -112,26 +112,34 @@ def trackCameraDistanceBoundaries(distance, Dist):
 
 def transformDist(distance, ImgW):
 	OldMin = 0
+	OldMax = 180
 	NewMin = 2.5
-	NewMax = 12.5
+	NewMax = 7.5
 	# OldRange = (OldMax-OldMin)
-	OldRange = (ImgW - OldMin)  
+	OldRange = (OldMax - OldMin)  
 	# NewRange = (NewMax - NewMin)  
 	NewRange = (NewMax - NewMin)  
 	# NewValue = (((OldValue - OldMin) * NewRange) / OldRange) + NewMin
 	print("before doing the operation\n, distance: {}, OldMin: {}, NewRange: {}, OldRange: {}, NewMin:{}". format(distance[4], OldMin, NewRange, OldRange, NewMin))
-	CurrentVal = ((((distance[4] - OldMin) * NewRange) / OldRange) + NewMin)
+
+	# Invert total distance (OldMax - distance)
+	invertedDist = OldMax - distance[4]
+
+	# Transform inverted distance into PWM range(2.5-12.5)
+	CurrentVal = ((((invertedDist - OldMin) * NewRange) / OldRange) + NewMin)
+
 	print("This is the current val {} \n".format(CurrentVal))
 	return CurrentVal
 
+# update servo with new PWM position
 def updateServo(position):
-	print("updating servo")
+	print("updating servo to position: {}\n".format(position))
 	if(float(position) <12.6 and float(position) > 2.4):	
 		p.ChangeDutyCycle(position)
 	else:
 		return False
 
-# bool to runsetup setup function on first run
+# bool to run setup function on first run
 firstLoop = True
 # capture frames from the camera
 for rawFrame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
