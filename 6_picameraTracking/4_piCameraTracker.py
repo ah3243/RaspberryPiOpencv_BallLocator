@@ -1,18 +1,23 @@
+##################################################
+###           Pi Opencv Ball Locator           ###
+##################################################
+
+#--- IMPORTS ---#
 # piCamera imports
 from picamera.array import PiRGBArray
 from picamera import PiCamera
 import time
 
-# opencv imports
+# Opencv imports
 import cv2
 import numpy as np
 import imutils
 from scipy.spatial import distance as dist # calculate pixel distance
 
-# servo imports
+# Raspberry Pi Servo imports
 import RPi.GPIO as IO
 
-# Definitions
+#--- Definitions ---# 
 minCircle = 10
 NumRows = 3
 NumCols = 3
@@ -20,9 +25,7 @@ ImgW = 320
 ImgH = 240
 fps = 32
 block = [0,0] # image segment dimensions
-
-# basic number to check the range of distances
-Dist = [50,50]
+Dist = [50,50] # basic number to check the range of distances
 
 # set hue limits for tracked object
 blueLower = (110,50,50)
@@ -33,14 +36,14 @@ centrePoints = [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], 
 # Store distance from tracked ball to segment centres
 distance = [[],[],[],[], [], [], [], [], []]
 
+
+#---- INITIALISATIONS ---#
 # initialise the camera
 camera = PiCamera()
 camera.resolution = (ImgW, ImgH)
 camera.framerate = fps
 rawCapture = PiRGBArray(camera, size=(ImgW, ImgH))
-
-# allow the camera to warmup
-time.sleep(0.1)
+time.sleep(0.1) # allow the camera to warmup
 
 # Servo Initialisation
 keyPin = 18
@@ -48,13 +51,13 @@ IO.setmode(IO.BCM)
 IO.setup(keyPin, IO.OUT)
 IO.setwarnings(False)
 
-# set pin 18 as a PWM pin with a frequency of 50 Hz
-p = IO.PWM(keyPin, 50)
-# start PWM
-p.start(7.5)
+p = IO.PWM(keyPin, 50) # set pin 18 as a PWM pin with a frequency of 50 Hz
+p.start(7.5) # start PWM
 
-
-# populate x and y arrays
+#---- FUNCTIONS ---#
+# calculate the centre points(x,y) of the image segments, return as array
+# for example an image with 9 segments(3x3) has the central (x,y) of each 
+# segment returned in the array
 def populateArray(block):
 	tmp = 0
 	Arr = [0,0,0]
@@ -67,19 +70,16 @@ def populateArray(block):
 		tmp = Arr[a]
 	return Arr
 
-def calDistance(distance, ballLoc):
-	for a in range(len(distance)):
-		distance[a] = int(dist.euclidean(centrePoints[a], ballLoc))
-	print(distance)
-
+# Segment the initial frame and calculate the segment centrepoints, store these in 
+# centrePoints Array
 def prepSegments(frame):
-	# get dimensions of test frame
+	# confirm dimensions of test frame
 	ImgH = frame.shape[0]
 
-	# calculate the segment dimensions based on image size and num. segments
+	# calculate the segment dimensions based on image size and number of segments save these in block variable
 	block = [int(ImgH/NumRows), int(ImgW/NumCols)]
+	#print(frame.shape)
 
-	print(frame.shape)
 
 	cntW = populateArray(block[1])
 	cntH = populateArray(block[0])
@@ -98,8 +98,16 @@ def prepSegments(frame):
 		xCnt += 1
 		Counter += 1
 
-	print(centrePoints)
+	#print(centrePoints)
 
+# Calculate and rtn the distance(pixels) between ball centre point and segment centre
+def calDistance(distance, ballLoc):
+	for a in range(len(distance)):
+		distance[a] = int(dist.euclidean(centrePoints[a], ballLoc))
+	print(distance)
+
+# Development function to find the distance range for specific image segments	
+# used to tune the distance to PWM transformation function(transformDist)
 def trackCameraDistanceBoundaries(distance, Dist):
 	# print("This is the Distance {} and this is DistHigh {}\n".format(distance, Dist[1]))
 	if distance > Dist[1]:
@@ -110,25 +118,26 @@ def trackCameraDistanceBoundaries(distance, Dist):
 		Dist[0] = distance	
 	return Dist
 
+# Transforms the distance values into corresponding PWM values
 def transformDist(distance, ImgW):
 	OldMin = 0
-	OldMax = 180
-	NewMin = 2.5
-	NewMax = 7.5
+	OldMax = 180 
+	NewMin = 2.5 # 0 degrees
+	NewMax = 7.5 # 90 degrees(so servo arm is vertically in the air)
+	invertedDist = OldMax - distance[4] # Invert total distance (OldMax - distance)
+
 	# OldRange = (OldMax-OldMin)
 	OldRange = (OldMax - OldMin)  
 	# NewRange = (NewMax - NewMin)  
 	NewRange = (NewMax - NewMin)  
 	# NewValue = (((OldValue - OldMin) * NewRange) / OldRange) + NewMin
-	print("before doing the operation\n, distance: {}, OldMin: {}, NewRange: {}, OldRange: {}, NewMin:{}". format(distance[4], OldMin, NewRange, OldRange, NewMin))
-
-	# Invert total distance (OldMax - distance)
-	invertedDist = OldMax - distance[4]
+	
+	#print("before doing the operation\n, distance: {}, OldMin: {}, NewRange: {}, OldRange: {}, NewMin:{}". format(distance[4], OldMin, NewRange, OldRange, NewMin))
 
 	# Transform inverted distance into PWM range(2.5-12.5)
 	CurrentVal = ((((invertedDist - OldMin) * NewRange) / OldRange) + NewMin)
 
-	print("This is the current val {} \n".format(CurrentVal))
+	#print("This is the current val {} \n".format(CurrentVal))
 	return CurrentVal
 
 # update servo with new PWM position
@@ -139,18 +148,21 @@ def updateServo(position):
 	else:
 		return False
 
-# bool to run setup function on first run
-firstLoop = True
+
+#---- MAIN ---#
+
+firstLoop = True # bool to run setup function on first run
+
 # capture frames from the camera
 for rawFrame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
-	# grab the raw NumPy array representing the image, then initialize the timestamp
-	# and occupied/unoccupied text
+	# grab the raw NumPy Array
 	frame = rawFrame.array
 
-	# resize frame and convert to HSV
+	# resize(confirm it is correct size) frame and convert to HSV
 	frame = imutils.resize(frame, width=ImgW)
 	hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
+	# calculate segments and centre points only on first frame
 	if firstLoop:
 		print("first loop")
 		firstLoop = False
@@ -165,13 +177,13 @@ for rawFrame in camera.capture_continuous(rawCapture, format="bgr", use_video_po
 	mask = cv2.erode(mask, None, iterations=2)
 	mask = cv2.dilate(mask, None, iterations=2)
 
-		# find contours
+	# find contours
 	cnts = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL,
 		cv2.CHAIN_APPROX_SIMPLE)[-2]
 	# initialise (x,y) ball centre
 	center = None
 
-		# continue if a contour was found
+	# continue if a contour was found
 	if len(cnts) > 0:
 		# find the largest contour, 
 		c = max(cnts, key=cv2.contourArea)
@@ -189,8 +201,13 @@ for rawFrame in camera.capture_continuous(rawCapture, format="bgr", use_video_po
 			cv2.circle(frame, (int(x), int(y)), int(radius),(0, 100, 255), 2)
 			# draw centre point to frame
 			cv2.circle(frame, center, 5, (255, 0, 255), -1)
+			
+			# calculate distance from ball to single segment centre
 			calDistance(distance, center)
+			# DEV USE:
 			Dist = trackCameraDistanceBoundaries(distance[4], Dist) # track the highest and lowest recorded values for centre pin
+
+			# Transform distance(pixels) to PWM based servo position, update servo
 			servoPos = transformDist(distance, ImgW) # transform the distance to servo PWM value
 			updateServo(servoPos) # set Servo to new position
 
