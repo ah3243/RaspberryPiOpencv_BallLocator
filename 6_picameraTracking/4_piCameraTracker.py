@@ -9,6 +9,8 @@ import numpy as np
 import imutils
 from scipy.spatial import distance as dist # calculate pixel distance
 
+# servo imports
+import RPi.GPIO as IO
 
 # Definitions
 minCircle = 10
@@ -39,6 +41,18 @@ rawCapture = PiRGBArray(camera, size=(ImgW, ImgH))
 
 # allow the camera to warmup
 time.sleep(0.1)
+
+# Servo Initialisation
+keyPin = 18
+IO.setmode(IO.BCM)
+IO.setup(keyPin, IO.OUT)
+IO.setwarnings(False)
+
+# set pin 18 as a PWM pin with a frequency of 50 Hz
+p = IO.PWM(keyPin, 50)
+# start PWM
+p.start(7.5)
+
 
 # populate x and y arrays
 def populateArray(block):
@@ -96,12 +110,29 @@ def trackCameraDistanceBoundaries(distance, Dist):
 		Dist[0] = distance	
 	return Dist
 
+def transformDist(distance, ImgW):
+	OldMin = 0
+	NewMin = 2.5
+	NewMax = 12.5
+	# OldRange = (OldMax-OldMin)
+	OldRange = (ImgW - OldMin)  
+	# NewRange = (NewMax - NewMin)  
+	NewRange = (NewMax - NewMin)  
+	# NewValue = (((OldValue - OldMin) * NewRange) / OldRange) + NewMin
+	print("before doing the operation\n, distance: {}, OldMin: {}, NewRange: {}, OldRange: {}, NewMin:{}". format(distance[4], OldMin, NewRange, OldRange, NewMin))
+	CurrentVal = ((((distance[4] - OldMin) * NewRange) / OldRange) + NewMin)
+	print("This is the current val {} \n".format(CurrentVal))
+	return CurrentVal
+
 def updateServo(position):
 	print("updating servo")
+	if(float(position) <12.6 and float(position) > 2.4):	
+		p.ChangeDutyCycle(position)
+	else:
+		return False
 
 # bool to runsetup setup function on first run
 firstLoop = True
-
 # capture frames from the camera
 for rawFrame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
 	# grab the raw NumPy array representing the image, then initialize the timestamp
@@ -151,7 +182,9 @@ for rawFrame in camera.capture_continuous(rawCapture, format="bgr", use_video_po
 			# draw centre point to frame
 			cv2.circle(frame, center, 5, (255, 0, 255), -1)
 			calDistance(distance, center)
-			Dist = trackCameraDistanceBoundaries(distance[4], Dist)
+			Dist = trackCameraDistanceBoundaries(distance[4], Dist) # track the highest and lowest recorded values for centre pin
+			servoPos = transformDist(distance, ImgW) # transform the distance to servo PWM value
+			updateServo(servoPos) # set Servo to new position
 
 	# show the frame
 	cv2.imshow("Frame", frame)
