@@ -21,15 +21,25 @@ import RPi.GPIO as IO
 minCircle = 10
 NumRows = 3
 NumCols = 3
+# ImgW = 640
+# ImgH = 480
 ImgW = 320
 ImgH = 240
-fps = 32
+
+fps = 60
 block = [0,0] # image segment dimensions
 Dist = [50,50] # basic number to check the range of distances
 
-# set hue limits for tracked object
-blueLower = (110,50,50)
-blueUpper = (130,255,255)
+# # set hue limits for tracked object
+# blueLower = (110,50,50)
+# blueUpper = (130,255,255)
+
+# tennis ball green
+greenLower = (20,100,100)
+greenUpper = (50,255,255)
+
+ColorLower = greenLower
+ColorUpper = greenUpper
 
 # calculate the centre points(correponding to actuators)
 centrePoints = [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]] 
@@ -152,9 +162,15 @@ def updateServo(position):
 #---- MAIN ---#
 
 firstLoop = True # bool to run setup function on first run
-
+startTime = 0
+finishTime = 0
+iterations = 0
 # capture frames from the camera
 for rawFrame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
+	if iterations == 0:
+		startTime = time.time()
+		print("starting time: {}\n".format(startTime))
+	
 	# grab the raw NumPy Array
 	frame = rawFrame.array
 
@@ -173,7 +189,7 @@ for rawFrame in camera.capture_continuous(rawCapture, format="bgr", use_video_po
 		cv2.circle(frame, centrePoints[b], 3, (0, 255, 0), -1)
 
 	# generate mask and dilate and erode to remove minor points
-	mask = cv2.inRange(hsv, blueLower, blueUpper)
+	mask = cv2.inRange(hsv, ColorLower, ColorUpper)
 	mask = cv2.erode(mask, None, iterations=2)
 	mask = cv2.dilate(mask, None, iterations=2)
 
@@ -221,6 +237,19 @@ for rawFrame in camera.capture_continuous(rawCapture, format="bgr", use_video_po
 	# if the `q` key was pressed, break from the loop
 	if key == ord("q"):
 		break 
+	
+	# increment iteration counter
+	iterations += 1
+	print("iteration: {}\n".format(iterations))
+
+# calculate FPS
+finishTime = time.time()
+timeEleapsed = finishTime - startTime
+print("Time taken : {} seconds".format(timeEleapsed))
+
+# Calculate frames per second
+trueFPS  = iterations / timeEleapsed
+print("Estimated frames per second : {}".format(trueFPS))
 
 # cleanup the camera and close any open windows
 print("Cleaning up")
