@@ -30,17 +30,6 @@ fps = 60
 block = [0,0] # image segment dimensions
 Dist = [50,50] # basic number to check the range of distances
 
-# # set hue limits for tracked object
-# blueLower = (110,50,50)
-# blueUpper = (130,255,255)
-
-# tennis ball green
-greenLower = (20,100,100)
-greenUpper = (50,255,255)
-
-ColorLower = greenLower
-ColorUpper = greenUpper
-
 # calculate the centre points(correponding to actuators)
 centrePoints = [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]] 
 # Store distance from tracked ball to segment centres
@@ -48,14 +37,14 @@ distance = [[],[],[],[], [], [], [], [], []]
 
 
 #---- INITIALISATIONS ---#
-# initialise the camera
+### initialise the camera ###
 camera = PiCamera()
 camera.resolution = (ImgW, ImgH)
 camera.framerate = fps
 rawCapture = PiRGBArray(camera, size=(ImgW, ImgH))
 time.sleep(0.1) # allow the camera to warmup
 
-# Servo Initialisation
+### Servo Initialisation ###
 keyPin = 18
 IO.setmode(IO.BCM)
 IO.setup(keyPin, IO.OUT)
@@ -63,6 +52,31 @@ IO.setwarnings(False)
 
 p = IO.PWM(keyPin, 50) # set pin 18 as a PWM pin with a frequency of 50 Hz
 p.start(7.5) # start PWM
+
+###  Target Color definition ### 
+# target color hsv range
+ColorLower = (0,0,0)
+ColorUpper = (0,0,0)
+
+# set upper and lower target color hsv values
+def defineTargetColor(h, s, v, flag):
+	# set top hsv value
+	if flag == True:
+		ColorUpper = (h,s,v)		
+	# set bottom hsv value	
+	else:
+		ColorLower = (h,s,v)
+
+## set hue limits for tracked object
+# blueLower = (110,50,50)
+# blueUpper = (130,255,255)
+
+## tennis ball greenLower
+# greeen lower
+defineTargetColor(20,100,100, True)
+# green upper
+defineTargetColor(50,255,255, False)
+
 
 #---- FUNCTIONS ---#
 # calculate the centre points(x,y) of the image segments, return as array
@@ -156,8 +170,7 @@ def updateServo(position):
 	if(float(position) <12.6 and float(position) > 2.4):	
 		p.ChangeDutyCycle(position)
 	else:
-		return False
-
+		return False		
 
 #---- MAIN ---#
 
