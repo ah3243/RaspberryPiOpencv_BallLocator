@@ -82,6 +82,9 @@ if ACTUATORSON:
 	ACCtopLimit = 100
 	ACCbottomLimit = 0
 
+	# used to stop motors if no circle found
+	pwmValsZERO = [[0],[0],[0],[0]]
+
 	# choose pin numbering system
 	GPIO.setmode(GPIO.BOARD)
 
@@ -253,25 +256,46 @@ def transformDist(distance, pwmVals):
 		# print("This is the current val {} \n".format(pwmVals[i]))
 	
 # update actuator with new PWM value
-def updateAct(value):
+def confirmPWMVals(value):
 	# print PWM position if flagged
 	if p_AccPositions:
-		print("updated actuator values a: {}, b:{}, c:{}, d:{}".format(value[0],value[2], value[6], value[8]))
+		print("\n\nThese are the values INSIDE: {}\n".format(value))
 
 	# only send signals to positions which have actuators
 	activePins = (0,2,6,8)
+	pwmValues = [0,0,0,0]
 
-	# confirm none of the values have 
+	# confirm all values are in range and save to array if true
 	for i in range(len(activePins)):
 		if(float(value[activePins[i]]) > ACCtopLimit or float(value[activePins[i]]) < ACCbottomLimit):	
 			print("ERR: Adjusted PWM value not within safe range, value: {}.".format(value[activePins[i]]))
 			return False		
+		else:
+			# if value is within range save to array
+			pwmValues[i] = float(value[activePins[i]])
+			# pwmValues[i] = float(0.0)
+
+	# update the actuators with new pwm values
+	updateActVals(pwmValues)
+
+def updateActVals(values):
+	if (len(values) != 4):
+		print("ERR: Incorrect number of pin values entered, value: {}.".format(len(values)))
+		return False
+
+	# convert list to numpy float array
+	value1 = np.array(values) + 0.
+
+	# print the values and type if debug flag is true
+	if p_AccPositions:
+		print("These are the type: {} and values: {}".format(type(value1), value1))
 
 	# assign pins to new PWM values
-	ACCa.ChangeDutyCycle(value[activePins[0]])
-	ACCb.ChangeDutyCycle(value[activePins[1]])
-	ACCc.ChangeDutyCycle(value[activePins[2]])
-	ACCd.ChangeDutyCycle(value[activePins[3]])
+	ACCa.ChangeDutyCycle(value1[0])
+	ACCb.ChangeDutyCycle(value1[1])
+	ACCc.ChangeDutyCycle(value1[2])
+	ACCd.ChangeDutyCycle(value1[3])
+
 
 #---- MAIN ---#
 
@@ -358,7 +382,15 @@ for rawFrame in camera.capture_continuous(rawCapture, format="bgr", use_video_po
 				transformDist(distance, pwmVals)
 
 				# send actuator new control value
-				updateAct(pwmVals) 
+				confirmPWMVals(pwmVals) 
+	
+		elif ACTUATORSON:
+			# set all actuators to minimum PWM value if no valid circle found
+			updateActVals(pwmValsZERO)
+
+	elif ACTUATORSON:
+		# set all actuators to minimum PWM value if no valid circle found
+		updateActVals(pwmValsZERO)
 
 	# show the frame
 	cv2.imshow("Frame", frame)
