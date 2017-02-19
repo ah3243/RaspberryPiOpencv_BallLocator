@@ -8,42 +8,58 @@ from picamera.array import PiRGBArray
 from picamera import PiCamera
 import time
 
+# python imports
+from scipy.spatial import distance as dist # calculate pixel distance
+import math # to calculate the maximum distance a certain actuator(actuators active area dimensions)
+
 # Opencv imports
 import cv2
 import numpy as np
 import imutils
-from scipy.spatial import distance as dist # calculate pixel distance
 
-# Raspberry Pi Servo imports
-import RPi.GPIO as IO
+# Raspberry Pi Actuator imports
+import RPi.GPIO as GPIO
 
 #--- Definitions ---# 
+# minimum valid circle
 minCircle = 10
+
+# number of rows and cols in image segment
 NumRows = 3
 NumCols = 3
+
+# image dimensions
 # ImgW = 640
 # ImgH = 480
 ImgW = 320
 ImgH = 240
 
+# calculate the diagonal distance from the four actuators to the center point(max distance they must deal with)
+maxDistance = (math.sqrt(math.pow(ImgH/NumRows, 2)+math.pow(ImgW/NumCols, 2)))
+
+# camera settings
 fps = 60
+
+# placeholders for image segment details
 block = [0,0] # image segment dimensions
-Dist = [50,50] # basic number to check the range of distances
+
 
 ## print Options
 p_Iterations = False # current iteration number
 p_AccVals = False # actuator values
 p_AccPositions = False # translated actuator PWM signal
+p_Distances = False # distance values
 
 # Flags
-ACTUATORSON = False # route signals to actuators
-TUNEHSVRANGE = True # tune the target HSV range, with trackbar and target color area of image
+ACTUATORSON = True # route signals to actuators
+TUNEHSVRANGE = False # tune the target HSV range, with trackbar and target color area of image
 
-# calculate the centre points(correponding to actuators)
+# calculate the centre points of a 9x9 grid layed on top of the image
 centrePoints = [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]] 
 # Store distance from tracked ball to segment centres
 distance = [[],[],[],[], [], [], [], [], []]
-
+# PWM value
+pwmVals = [[],[],[],[], [], [], [], [], []]
 
 #---- INITIALISATIONS ---#
 ### initialise the camera ###
@@ -53,15 +69,43 @@ camera.framerate = fps
 rawCapture = PiRGBArray(camera, size=(ImgW, ImgH))
 time.sleep(0.1) # allow the camera to warmup
 
-### Servo Initialisation ###
-keyPin = 18
-IO.setmode(IO.BCM)
-IO.setup(keyPin, IO.OUT)
-IO.setwarnings(False)
-
+### Actuator Initialisation ###
 if ACTUATORSON:
-	p = IO.PWM(keyPin, 50) # set pin 18 as a PWM pin with a frequency of 50 Hz
-	p.start(7.5) # start PWM
+	# pin numbers
+	pin1 = 3
+	pin2 = 5
+	pin3 = 7
+	pin4 = 8
+
+	# motor config details
+	ACCfreq = 200
+	ACCtopLimit = 100
+	ACCbottomLimit = 0
+
+	# choose pin numbering system
+	GPIO.setmode(GPIO.BOARD)
+
+	# prevent Pi warning on startup
+	GPIO.setwarnings(False)
+
+	# set pins as output
+	GPIO.setup(pin1, GPIO.OUT)
+	GPIO.setup(pin2, GPIO.OUT)
+	GPIO.setup(pin3, GPIO.OUT)
+	GPIO.setup(pin4, GPIO.OUT)
+
+	# set PWM pins and frequency
+	ACCa = GPIO.PWM(pin1, ACCfreq)
+	ACCb = GPIO.PWM(pin2, ACCfreq)
+	ACCc = GPIO.PWM(pin3, ACCfreq)
+	ACCd = GPIO.PWM(pin4, ACCfreq)
+
+	# initialise PWM values
+	ACCa.start(0)
+	ACCb.start(0)
+	ACCc.start(0)
+	ACCd.start(0)
+
 
 ###  Target Color definition ### 
 
@@ -104,6 +148,9 @@ if TUNEHSVRANGE:
 
 
 #---- FUNCTIONS ---#
+
+### Color Range Functions
+
 # get and update hsv range values from trackbar
 def getHSVRange():
 	# get upper hsv range values
@@ -121,6 +168,9 @@ def getHSVRange():
 	ColorUpper = (h1,s1,v1)
 	global ColorLower 
 	ColorLower = (h2,s2,v2)
+
+
+### Image segmenting functions
 
 # calculate the centre points(x,y) of the image segments, return as array
 # for example an image with 9 segments(3x3) has the central (x,y) of each 
@@ -167,66 +217,72 @@ def prepSegments(frame):
 
 	#print(centrePoints)
 
+
+### Ball Location Functions
+
 # Calculate and rtn the distance(pixels) between ball centre point and segment centre
 def calDistance(distance, ballLoc):
 	for a in range(len(distance)):
-		distance[a] = int(dist.euclidean(centrePoints[a], ballLoc))
+		tmpDist = int(dist.euclidean(centrePoints[a], ballLoc))
+		if tmpDist > maxDistance:
+			distance[a] = maxDistance
+		elif tmpDist < 0:
+			distance[a] = 0
+		else:
+			distance[a] = tmpDist
 	if p_AccVals:
 		print("The current distances to the centre points are: {}".format(distance))
 
-# Development function to find the distance range for specific image segments	
-# used to tune the distance to PWM transformation function(transformDist)
-def trackCameraDistanceBoundaries(distance, Dist):
-	
-	# print("This is the Distance {} and this is DistHigh {}\n".format(distance, Dist[1]))
-	if distance > Dist[1]:
-		print("distance {} is higher than DistHigh {}".format(distance, Dist[1]))
-		Dist[1] = distance
-	elif distance < Dist[0]:
-		print("distance {} is higher than DistLow {}".format(distance, Dist[0]))
-		Dist[0] = distance	
-	return Dist
-
 # Transforms the distance values into corresponding PWM values
-def transformDist(distance, ImgW):
-	OldMin = 0
-	OldMax = 180 
-	NewMin = 2.5 # 0 degrees
-	NewMax = 7.5 # 90 degrees(so servo arm is vertically in the air)
-	invertedDist = OldMax - distance[4] # Invert total distance (OldMax - distance)
+def transformDist(distance, pwmVals):
+	# old range
+	OldRange = (maxDistance - 0)
+	# new range
+	NewRange = (ACCtopLimit - ACCbottomLimit)  
 
-	# NewValue = (((OldValue - OldMin) * NewRange) / OldRange) + NewMin
-	# OldRange = (OldMax-OldMin)
-	OldRange = (OldMax - OldMin)  
-	# NewRange = (NewMax - NewMin)  
-	NewRange = (NewMax - NewMin)  
+	for i in range(len(pwmVals)):
+		# Invert total distance (OldMax - distance) to have a high value for closer
+		invertedDist = maxDistance - distance[i] 
+
+
+		# Transform inverted distance into PWM range(0-100)
+			# NewValue = ((((OldValue - OldMin) * NewRange) / OldRange) + NewMin)
+		pwmVals[i] = (((invertedDist) * NewRange) / OldRange)
+
+		# print("before doing the operation\n, distance: {}, invertedDist {}, NewRange: {}, OldRange: {}". format(distance[i], invertedDist, NewRange, OldRange))
+		# print("This is the current val {} \n".format(pwmVals[i]))
 	
-	#print("before doing the operation\n, distance: {}, OldMin: {}, NewRange: {}, OldRange: {}, NewMin:{}". format(distance[4], OldMin, NewRange, OldRange, NewMin))
-
-	# Transform inverted distance into PWM range(2.5-12.5)
-	CurrentVal = ((((invertedDist - OldMin) * NewRange) / OldRange) + NewMin)
-
-	#print("This is the current val {} \n".format(CurrentVal))
-	return CurrentVal
-
-# update servo with new PWM position
-def updateServo(position):
-	
+# update actuator with new PWM value
+def updateAct(value):
 	# print PWM position if flagged
 	if p_AccPositions:
-		print("updating servo to position: {}\n".format(position))
+		print("updated actuator values a: {}, b:{}, c:{}, d:{}".format(value[0],value[2], value[6], value[8]))
 
-	if(float(position) <12.6 and float(position) > 2.4):	
-		p.ChangeDutyCycle(position)
-	else:
-		return False		
+	# only send signals to positions which have actuators
+	activePins = (0,2,6,8)
+
+	# confirm none of the values have 
+	for i in range(len(activePins)):
+		if(float(value[activePins[i]]) > ACCtopLimit or float(value[activePins[i]]) < ACCbottomLimit):	
+			print("ERR: Adjusted PWM value not within safe range, value: {}.".format(value[activePins[i]]))
+			return False		
+
+	# assign pins to new PWM values
+	ACCa.ChangeDutyCycle(value[activePins[0]])
+	ACCb.ChangeDutyCycle(value[activePins[1]])
+	ACCc.ChangeDutyCycle(value[activePins[2]])
+	ACCd.ChangeDutyCycle(value[activePins[3]])
 
 #---- MAIN ---#
 
 firstLoop = True # bool to run setup function on first run
+
+# variables to track the FPS 
 startTime = 0
 finishTime = 0
 iterations = 0
+
+
 # capture frames from the camera
 for rawFrame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
 	if iterations == 0:
@@ -275,11 +331,11 @@ for rawFrame in camera.capture_continuous(rawCapture, format="bgr", use_video_po
 	# continue if a contour was found
 	if len(cnts) > 0:
 		# find the largest contour, 
-		c = max(cnts, key=cv2.contourArea)
-		((x, y), radius) = cv2.minEnclosingCircle(c)
+		contour = max(cnts, key=cv2.contourArea)
+		((x, y), radius) = cv2.minEnclosingCircle(contour)
 
 		# calculate the contour centre
-		M = cv2.moments(c)
+		M = cv2.moments(contour)
 		cX = int(M["m10"] / M["m00"])
 		cY = int(M["m01"] / M["m00"])
 		center = (cX, cY)
@@ -291,15 +347,18 @@ for rawFrame in camera.capture_continuous(rawCapture, format="bgr", use_video_po
 			# draw centre point to frame
 			cv2.circle(frame, center, 5, (255, 0, 255), -1)
 			
-			# calculate distance from ball to single segment centre
-			calDistance(distance, center)
-			# DEV USE:
-			Dist = trackCameraDistanceBoundaries(distance[4], Dist) # track the highest and lowest recorded values for centre pin
-
 			if ACTUATORSON:
-				# Transform distance(pixels) to PWM based servo position, update servo
-				servoPos = transformDist(distance, ImgW) # transform the distance to servo PWM value
-				updateServo(servoPos) # set Servo to new position
+				# calculate distance from ball to single segment centre
+				calDistance(distance, center)
+	
+				if p_Distances:
+					print("This is the distance: {}".format(distance))
+			
+				# Transform distance(pixels) to PWM based actuator control value
+				transformDist(distance, pwmVals)
+
+				# send actuator new control value
+				updateAct(pwmVals) 
 
 	# show the frame
 	cv2.imshow("Frame", frame)
