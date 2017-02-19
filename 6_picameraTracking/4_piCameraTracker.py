@@ -36,7 +36,8 @@ p_AccVals = False # actuator values
 p_AccPositions = False # translated actuator PWM signal
 
 # Flags
-ACTUATORSON = False
+ACTUATORSON = False # route signals to actuators
+TUNEHSVRANGE = True # tune the target HSV range, with trackbar and target color area of image
 
 # calculate the centre points(correponding to actuators)
 centrePoints = [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]] 
@@ -64,6 +65,45 @@ if ACTUATORSON:
 
 ###  Target Color definition ### 
 
+## set hue limits for tracked object
+# blue nivea bottle top
+# blueLower = (110,50,50)
+# blueUpper = (130,255,255)
+
+# green tennis ball
+greenLower = (20,100,100)
+greenUpper = (50,255,255)
+
+# plastic Green Ball
+# greenLower = (29,86,6)
+# greenUpper = (64,255,255)
+
+# target color hsv range, set to current target color range
+ColorLower = greenLower
+ColorUpper = greenUpper
+
+# function to assign the new track
+def nothing(x):
+	pass
+
+if TUNEHSVRANGE:
+	## adjust target color
+	cv2.namedWindow('upperLimit')
+	cv2.namedWindow('bottomLimit')
+	cv2.namedWindow('mask')
+
+	# create trackbars for bottom of target color range
+	cv2.createTrackbar('H','bottomLimit',ColorLower[0],255,nothing)
+	cv2.createTrackbar('S','bottomLimit',ColorLower[1],255,nothing)
+	cv2.createTrackbar('V','bottomLimit',ColorLower[2],255,nothing)
+
+	# create trackbars for top of target color range
+	cv2.createTrackbar('H','upperLimit',ColorUpper[0],255,nothing)
+	cv2.createTrackbar('S','upperLimit',ColorUpper[1],255,nothing)
+	cv2.createTrackbar('V','upperLimit',ColorUpper[2],255,nothing)
+
+
+#---- FUNCTIONS ---#
 # get and update hsv range values from trackbar
 def getHSVRange():
 	# get upper hsv range values
@@ -82,44 +122,6 @@ def getHSVRange():
 	global ColorLower 
 	ColorLower = (h2,s2,v2)
 
-# target color hsv range
-ColorLower = (0,0,0)
-ColorUpper = (0,0,0)
-
-## set hue limits for tracked object
-# blue nivea bottle top
-# blueLower = (110,50,50)
-# blueUpper = (130,255,255)
-
-# green tennis ball
-# greenLower = (20,100,100)
-# greenUpper = (50,255,255)
-
-# plastic Green Ball
-# greenLower = (29,86,6)
-# greenUpper = (64,255,255)
-
-
-# function to assign the new track
-def nothing(x):
-	pass
-
-## adjust target color
-cv2.namedWindow('upperLimit')
-cv2.namedWindow('bottomLimit')
-
-# create trackbars for bottom of target color range
-cv2.createTrackbar('H','bottomLimit',29,255,nothing)
-cv2.createTrackbar('S','bottomLimit',86,255,nothing)
-cv2.createTrackbar('V','bottomLimit',6,255,nothing)
-
-# create trackbars for top of target color range
-cv2.createTrackbar('H','upperLimit',64,255,nothing)
-cv2.createTrackbar('S','upperLimit',255,255,nothing)
-cv2.createTrackbar('V','upperLimit',255,255,nothing)
-
-
-#---- FUNCTIONS ---#
 # calculate the centre points(x,y) of the image segments, return as array
 # for example an image with 9 segments(3x3) has the central (x,y) of each 
 # segment returned in the array
@@ -243,11 +245,13 @@ for rawFrame in camera.capture_continuous(rawCapture, format="bgr", use_video_po
 		print("first loop")
 		firstLoop = False
 		prepSegments(frame)
-		
-	# update hsv values from trackbar
-	getHSVRange()
 
-	# Visually show the segment centres
+	# update hsv range if adjusting flag is true
+	if TUNEHSVRANGE:
+		# update hsv values from trackbar
+		getHSVRange()
+
+	# visually show the segment centres
 	for b in range(len(centrePoints)):
 		cv2.circle(frame, centrePoints[b], 3, (0, 255, 0), -1)
 
@@ -255,8 +259,12 @@ for rawFrame in camera.capture_continuous(rawCapture, format="bgr", use_video_po
 	mask = cv2.inRange(hsv, ColorLower, ColorUpper)
 	mask = cv2.erode(mask, None, iterations=2)
 	mask = cv2.dilate(mask, None, iterations=2)
-	# print hsv limits
-	print("Bottom Limits: {} Upper limits: {}".format(ColorLower, ColorUpper))
+
+	# if tuning hsv range show identified area of color in image
+	if TUNEHSVRANGE:
+		cv2.imshow("mask", mask)
+		# print hsv limits
+		print("Bottom Limits: {} Upper limits: {}".format(ColorLower, ColorUpper))
 
 	# find contours
 	cnts = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL,
