@@ -30,6 +30,14 @@ fps = 60
 block = [0,0] # image segment dimensions
 Dist = [50,50] # basic number to check the range of distances
 
+## print Options
+p_Iterations = False # current iteration number
+p_AccVals = False # actuator values
+p_AccPositions = False # translated actuator PWM signal
+
+# Flags
+ACTUATORSON = False
+
 # calculate the centre points(correponding to actuators)
 centrePoints = [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]] 
 # Store distance from tracked ball to segment centres
@@ -50,32 +58,65 @@ IO.setmode(IO.BCM)
 IO.setup(keyPin, IO.OUT)
 IO.setwarnings(False)
 
-p = IO.PWM(keyPin, 50) # set pin 18 as a PWM pin with a frequency of 50 Hz
-p.start(7.5) # start PWM
+if ACTUATORSON:
+	p = IO.PWM(keyPin, 50) # set pin 18 as a PWM pin with a frequency of 50 Hz
+	p.start(7.5) # start PWM
 
 ###  Target Color definition ### 
+
+# get and update hsv range values from trackbar
+def getHSVRange():
+	# get upper hsv range values
+	h1 = cv2.getTrackbarPos('H', 'upperLimit')
+	s1 = cv2.getTrackbarPos('S', 'upperLimit')
+	v1 = cv2.getTrackbarPos('V', 'upperLimit')
+	
+	# get lower hsv range values
+	h2 = cv2.getTrackbarPos('H', 'bottomLimit')
+	s2 = cv2.getTrackbarPos('S', 'bottomLimit')
+	v2 = cv2.getTrackbarPos('V', 'bottomLimit')
+
+	# update stored hsv range values
+	global ColorUpper 
+	ColorUpper = (h1,s1,v1)
+	global ColorLower 
+	ColorLower = (h2,s2,v2)
+
 # target color hsv range
 ColorLower = (0,0,0)
 ColorUpper = (0,0,0)
 
-# set upper and lower target color hsv values
-def defineTargetColor(h, s, v, flag):
-	# set top hsv value
-	if flag == True:
-		ColorUpper = (h,s,v)		
-	# set bottom hsv value	
-	else:
-		ColorLower = (h,s,v)
-
 ## set hue limits for tracked object
+# blue nivea bottle top
 # blueLower = (110,50,50)
 # blueUpper = (130,255,255)
 
-## tennis ball greenLower
-# greeen lower
-defineTargetColor(20,100,100, True)
-# green upper
-defineTargetColor(50,255,255, False)
+# green tennis ball
+# greenLower = (20,100,100)
+# greenUpper = (50,255,255)
+
+# plastic Green Ball
+# greenLower = (29,86,6)
+# greenUpper = (64,255,255)
+
+
+# function to assign the new track
+def nothing(x):
+	pass
+
+## adjust target color
+cv2.namedWindow('upperLimit')
+cv2.namedWindow('bottomLimit')
+
+# create trackbars for bottom of target color range
+cv2.createTrackbar('H','bottomLimit',29,255,nothing)
+cv2.createTrackbar('S','bottomLimit',86,255,nothing)
+cv2.createTrackbar('V','bottomLimit',6,255,nothing)
+
+# create trackbars for top of target color range
+cv2.createTrackbar('H','upperLimit',64,255,nothing)
+cv2.createTrackbar('S','upperLimit',255,255,nothing)
+cv2.createTrackbar('V','upperLimit',255,255,nothing)
 
 
 #---- FUNCTIONS ---#
@@ -128,11 +169,13 @@ def prepSegments(frame):
 def calDistance(distance, ballLoc):
 	for a in range(len(distance)):
 		distance[a] = int(dist.euclidean(centrePoints[a], ballLoc))
-	print(distance)
+	if p_AccVals:
+		print("The current distances to the centre points are: {}".format(distance))
 
 # Development function to find the distance range for specific image segments	
 # used to tune the distance to PWM transformation function(transformDist)
 def trackCameraDistanceBoundaries(distance, Dist):
+	
 	# print("This is the Distance {} and this is DistHigh {}\n".format(distance, Dist[1]))
 	if distance > Dist[1]:
 		print("distance {} is higher than DistHigh {}".format(distance, Dist[1]))
@@ -150,11 +193,11 @@ def transformDist(distance, ImgW):
 	NewMax = 7.5 # 90 degrees(so servo arm is vertically in the air)
 	invertedDist = OldMax - distance[4] # Invert total distance (OldMax - distance)
 
+	# NewValue = (((OldValue - OldMin) * NewRange) / OldRange) + NewMin
 	# OldRange = (OldMax-OldMin)
 	OldRange = (OldMax - OldMin)  
 	# NewRange = (NewMax - NewMin)  
 	NewRange = (NewMax - NewMin)  
-	# NewValue = (((OldValue - OldMin) * NewRange) / OldRange) + NewMin
 	
 	#print("before doing the operation\n, distance: {}, OldMin: {}, NewRange: {}, OldRange: {}, NewMin:{}". format(distance[4], OldMin, NewRange, OldRange, NewMin))
 
@@ -166,7 +209,11 @@ def transformDist(distance, ImgW):
 
 # update servo with new PWM position
 def updateServo(position):
-	print("updating servo to position: {}\n".format(position))
+	
+	# print PWM position if flagged
+	if p_AccPositions:
+		print("updating servo to position: {}\n".format(position))
+
 	if(float(position) <12.6 and float(position) > 2.4):	
 		p.ChangeDutyCycle(position)
 	else:
@@ -196,7 +243,10 @@ for rawFrame in camera.capture_continuous(rawCapture, format="bgr", use_video_po
 		print("first loop")
 		firstLoop = False
 		prepSegments(frame)
-	
+		
+	# update hsv values from trackbar
+	getHSVRange()
+
 	# Visually show the segment centres
 	for b in range(len(centrePoints)):
 		cv2.circle(frame, centrePoints[b], 3, (0, 255, 0), -1)
@@ -205,6 +255,8 @@ for rawFrame in camera.capture_continuous(rawCapture, format="bgr", use_video_po
 	mask = cv2.inRange(hsv, ColorLower, ColorUpper)
 	mask = cv2.erode(mask, None, iterations=2)
 	mask = cv2.dilate(mask, None, iterations=2)
+	# print hsv limits
+	print("Bottom Limits: {} Upper limits: {}".format(ColorLower, ColorUpper))
 
 	# find contours
 	cnts = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL,
@@ -236,9 +288,10 @@ for rawFrame in camera.capture_continuous(rawCapture, format="bgr", use_video_po
 			# DEV USE:
 			Dist = trackCameraDistanceBoundaries(distance[4], Dist) # track the highest and lowest recorded values for centre pin
 
-			# Transform distance(pixels) to PWM based servo position, update servo
-			servoPos = transformDist(distance, ImgW) # transform the distance to servo PWM value
-			updateServo(servoPos) # set Servo to new position
+			if ACTUATORSON:
+				# Transform distance(pixels) to PWM based servo position, update servo
+				servoPos = transformDist(distance, ImgW) # transform the distance to servo PWM value
+				updateServo(servoPos) # set Servo to new position
 
 	# show the frame
 	cv2.imshow("Frame", frame)
@@ -253,18 +306,20 @@ for rawFrame in camera.capture_continuous(rawCapture, format="bgr", use_video_po
 	
 	# increment iteration counter
 	iterations += 1
-	print("iteration: {}\n".format(iterations))
+	
+	# print iteration number if flagged
+	if p_Iterations:
+		print("iteration: {}\n".format(iterations))
 
 # calculate FPS
 finishTime = time.time()
 timeEleapsed = finishTime - startTime
-print("Time taken : {} seconds".format(timeEleapsed))
+print("\nTime taken : {} seconds".format(timeEleapsed))
 
 # Calculate frames per second
 trueFPS  = iterations / timeEleapsed
-print("Estimated frames per second : {}".format(trueFPS))
+print("Estimated frames per second : {}\n".format(trueFPS))
 
 # cleanup the camera and close any open windows
-print("Cleaning up")
-camera.release()
+print("\nCleaning up\n")
 cv2.destroyAllWindows()
