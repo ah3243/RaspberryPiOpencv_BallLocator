@@ -51,9 +51,10 @@ p_AccPositions = False # translated actuator PWM signal
 p_Distances = False # distance values
 
 # Flags
-ACTUATORSON = True # route signals to actuators
+ACTUATORSON = False # route signals to actuators
 TUNEHSVRANGE = False # tune the target HSV range, with trackbar and target color area of image
-DISPLAY = False # true if working from gui
+DISPLAY = True # true if working from gui
+VIDEOSAVE = True # if true save frames as video and output
 
 # calculate the centre points of a 9x9 grid layed on top of the image
 centrePoints = [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]] 
@@ -68,7 +69,7 @@ camera = PiCamera()
 camera.resolution = (ImgW, ImgH)
 camera.framerate = fps
 rawCapture = PiRGBArray(camera, size=(ImgW, ImgH))
-time.sleep(0.1) # allow the camera to warmup
+time.sleep(2.0) # allow the camera to warmup
 
 ### Actuator Initialisation ###
 if ACTUATORSON:
@@ -110,25 +111,30 @@ if ACTUATORSON:
 	ACCc.start(0)
 	ACCd.start(0)
 
+# output frames as video if true
+if(VIDEOSAVE):
+	# capture and store video
+	cap = cv2.VideoCapture(0)
+
+	fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+	out = None
+	out = cv2.VideoWriter('output.mp4', fourcc, 15.0, (ImgW,ImgH), True) # define the codec and create video writer object
 
 ###  Target Color definition ### 
 
 ## set hue limits for tracked object
 # blue nivea bottle top
-# blueLower = (110,50,50)
-# blueUpper = (130,255,255)
+ColorLower = (110,50,50)
+ColorUpper = (130,255,255)
 
 # green tennis ball
-greenLower = (20,100,100)
-greenUpper = (50,255,255)
+# ColorLower = (20,100,100)
+# ColorUpper = (50,255,255)
 
 # plastic Green Ball
-# greenLower = (29,86,6)
-# greenUpper = (64,255,255)
+# ColorLower = (29,86,6)
+# ColorUpper = (64,255,255)
 
-# target color hsv range, set to current target color range
-ColorLower = greenLower
-ColorUpper = greenUpper
 
 # function to assign the new track
 def nothing(x):
@@ -397,7 +403,11 @@ for rawFrame in camera.capture_continuous(rawCapture, format="bgr", use_video_po
 	if(DISPLAY):
 		cv2.imshow("Frame", frame)	
 	key = cv2.waitKey(1) & 0xFF
- 
+	
+	# output frames as video if true
+	if(VIDEOSAVE):
+		out.write(frame)
+
 	# clear the stream in preparation for the next frame
 	rawCapture.truncate(0)
  
@@ -427,3 +437,5 @@ print("\nCleaning up\n")
 # cleanup windows if DISPLAY == true
 if(DISPLAY):
 	cv2.destroyAllWindows()
+if (VIDEOSAVE):
+	out.release
