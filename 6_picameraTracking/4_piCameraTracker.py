@@ -53,6 +53,7 @@ p_Distances = False # distance values
 # Flags
 ACTUATORSON = True # route signals to actuators
 TUNEHSVRANGE = False # tune the target HSV range, with trackbar and target color area of image
+DISPLAY = False # true if working from gui
 
 # calculate the centre points of a 9x9 grid layed on top of the image
 centrePoints = [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]] 
@@ -392,8 +393,9 @@ for rawFrame in camera.capture_continuous(rawCapture, format="bgr", use_video_po
 		# set all actuators to minimum PWM value if no valid circle found
 		updateActVals(pwmValsZERO)
 
-	# show the frame
-	cv2.imshow("Frame", frame)
+	# show the frame if DISPLAY flag == true
+	if(DISPLAY):
+		cv2.imshow("Frame", frame)	
 	key = cv2.waitKey(1) & 0xFF
  
 	# clear the stream in preparation for the next frame
@@ -421,4 +423,7 @@ print("Estimated frames per second : {}\n".format(trueFPS))
 
 # cleanup the camera and close any open windows
 print("\nCleaning up\n")
-cv2.destroyAllWindows()
+
+# cleanup windows if DISPLAY == true
+if(DISPLAY):
+	cv2.destroyAllWindows()
